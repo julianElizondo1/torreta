@@ -1,0 +1,70 @@
+#include <Stepper.h>
+
+// --- Configuración del motor paso a paso ---
+const int pasosPorVuelta = 2048;        // 28BYJ-48 con reducción 1/64
+Stepper motor(pasosPorVuelta, 8, 10, 9, 11); // Orden de pines correcto
+
+// --- Sensor PIR ---
+const int pinPIR = 2;
+
+// --- LED y buzzer ---
+const int ledAlerta = 3;
+const int buzzer = 4;
+
+// --- Control de movimiento ---
+int pasos90 = pasosPorVuelta / 4; // ≈ 90°
+int velocidad = 10;               // Velocidad en RPM
+
+void setup() {
+  Serial.begin(9600);
+  motor.setSpeed(velocidad);
+
+  pinMode(pinPIR, INPUT);
+  pinMode(ledAlerta, OUTPUT);
+  pinMode(buzzer, OUTPUT);
+
+  digitalWrite(ledAlerta, LOW);
+  Serial.println("Torreta iniciando patrulla...");
+  delay(2000);
+}
+
+void loop() {
+  // 🔁 Giro hacia la derecha (90°)
+  for (int i = 0; i < pasos90; i++) {
+    motor.step(1);
+    if (digitalRead(pinPIR)) {
+      detectarMovimiento();
+    }
+  }
+
+  delay(300);
+
+  // 🔁 Giro hacia la izquierda (90°)
+  for (int i = 0; i < pasos90; i++) {
+    motor.step(-1);
+    if (digitalRead(pinPIR)) {
+      detectarMovimiento();
+    }
+  }
+
+  delay(300);
+}
+
+// --- Función cuando se detecta movimiento ---
+void detectarMovimiento() {
+  Serial.println("🚨 Movimiento detectado! Torreta en alerta...");
+  digitalWrite(ledAlerta, HIGH);
+
+  // 🔊 Tres pitidos cortos
+  for (int i = 0; i < 3; i++) {
+    tone(buzzer, 1000);  // tono de 1 kHz
+    delay(200);
+    noTone(buzzer);
+    delay(200);
+  }
+
+  delay(1000);  // pausa final “alerta”
+
+  digitalWrite(ledAlerta, LOW);
+  Serial.println("✅ Patrulla reanudada...");
+}
