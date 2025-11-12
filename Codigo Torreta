@@ -2,7 +2,7 @@
 
 // --- Configuración del motor paso a paso ---
 const int pasosPorVuelta = 2048;        // 28BYJ-48 con reducción 1/64
-Stepper motor(pasosPorVuelta, 8, 10, 9, 11); // Orden de pines correcto
+Stepper motor(pasosPorVuelta, 8, 10, 9, 11);
 
 // --- Sensor ultrasónico HC-SR04 ---
 const int pinTrig = 2;
@@ -12,9 +12,12 @@ const int pinEcho = 3;
 const int buzzer = 4;
 
 // --- Control de movimiento ---
-int pasos90 = pasosPorVuelta / 4; // ≈ 90°
-int velocidad = 10;               // Velocidad en RPM
-int distanciaDeteccion = 30;      // cm
+const int pasos90 = pasosPorVuelta / 4; // ≈ 90°
+const int velocidad = 10;               // Velocidad en RPM
+const int distanciaDeteccion = 20;      // cm
+
+// --- Variable global para saber posición actual ---
+int posicionActual = 0; // 0 = centro, positivo derecha, negativo izquierda
 
 void setup() {
   Serial.begin(9600);
@@ -29,21 +32,25 @@ void setup() {
 }
 
 void loop() {
-  patrullar(1);   // gira 90° a la derecha
-  patrullar(-1);  // gira 90° a la izquierda
+  // Barrido derecha
+  moverConDeteccion(pasos90);
+  // Barrido izquierda
+  moverConDeteccion(-pasos90);
 }
 
-// --- Función de patrullaje con detección integrada ---
-void patrullar(int direccion) {
-  for (int i = 0; i < pasos90; i++) {
-    motor.step(direccion);  // mueve paso a paso
+// --- Mueve el motor en una dirección controlada con detección activa ---
+void moverConDeteccion(int pasosObjetivo) {
+  int direccion = (pasosObjetivo > 0) ? 1 : -1;
+  int pasosTotales = abs(pasosObjetivo);
 
-    // mide distancia cada 10 pasos para no trabar el motor
-    if (i % 10 == 0) {
-      if (detectarObjeto()) {
-        reaccionAlerta();
-        break; // salir del bucle actual y continuar con el siguiente movimiento
-      }
+  for (int i = 0; i < pasosTotales; i++) {
+    motor.step(direccion);
+    posicionActual += direccion; // actualiza posición real
+
+    if (i % 10 == 0 && detectarObjeto()) {
+      reaccionAlerta();
+      volverAlCentro();
+      return; // vuelve al loop() principal desde el centro
     }
   }
   delay(300);
@@ -54,24 +61,21 @@ bool detectarObjeto() {
   long duracion;
   int distancia;
 
-  // Pulso de activación
   digitalWrite(pinTrig, LOW);
   delayMicroseconds(2);
   digitalWrite(pinTrig, HIGH);
   delayMicroseconds(10);
   digitalWrite(pinTrig, LOW);
 
-  // Lectura del eco con timeout de seguridad (para no quedarse colgado)
-  duracion = pulseIn(pinEcho, HIGH, 20000); // 20 ms máx
+  duracion = pulseIn(pinEcho, HIGH, 20000);
   if (duracion == 0) return false;
 
-  distancia = duracion * 0.034 / 2;  // Conversión a cm
+  distancia = duracion * 0.034 / 2;
 
   Serial.print("Distancia: ");
   Serial.print(distancia);
   Serial.println(" cm");
 
-  // Activa la alerta si hay algo dentro del rango
   return (distancia > 0 && distancia < distanciaDeteccion);
 }
 
@@ -79,14 +83,29 @@ bool detectarObjeto() {
 void reaccionAlerta() {
   Serial.println("🚨 Objeto detectado! Torreta en alerta...");
 
-  // 🔊 Tres pitidos cortos
   for (int i = 0; i < 3; i++) {
-    tone(buzzer, 1000);  // tono de 1 kHz
+    tone(buzzer, 1000);
     delay(200);
     noTone(buzzer);
     delay(200);
   }
 
-  delay(1000);  // pausa antes de retomar
-  Serial.println("✅ Patrulla reanudada...");
+  delay(500);
+  Serial.println("↩️ Volviendo al centro...");
 }
+
+// --- Regresa a la posición central real ---
+void volverAlCentro() {
+  int pasosARecuperar = -posicionActual; // cuántos pasos faltan para volver a 0
+  int direccion = (pasosARecuperar > 0) ? 1 : -1;
+
+  for (int i = 0; i < abs(pasosARecuperar); i++) {
+    motor.step(direccion);
+    delay(3);
+  }
+
+  posicionActual = 0; // ahora está en el centro
+  Serial.println("✅ Torreta centrada. Patrulla reanudada...");
+  delay(1000);
+}
+
